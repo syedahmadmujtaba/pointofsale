@@ -25,6 +25,7 @@ export interface Category {
 }
 
 export interface Product {
+  item_type?: 'stock' | 'service';
   id: number;
   sku: string;
   name: string;

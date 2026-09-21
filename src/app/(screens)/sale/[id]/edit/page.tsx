@@ -217,7 +217,10 @@ const EditSale = ({ params }: { params: Promise<{ id: string }> }) => {
         subtotal: subtotal,
         tax_amount: tax,
         total_amount: grandTotal,
-        amount_paid: grandTotal, // Cash-only system
+        // Settled invoices must have payments reversed before an edit is allowed.
+        // Editing must never silently turn an unpaid credit invoice into cash.
+        amount_paid: 0,
+        payment_terms: 'credit',
         sale_date: date,
         items: products.map(p => ({
           id: p.id,

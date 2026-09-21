@@ -6,6 +6,8 @@ import React, { useState } from 'react';
 export default function LoginPage() {
   const router = useRouter();
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -19,11 +21,16 @@ export default function LoginPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Logging in with:', formData);
-    // Add login logic here
-    router.push('/dashboard');
+    setError(''); setBusy(true);
+    try {
+      const response = await fetch('/api/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(formData) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Login failed');
+      router.push('/dashboard'); router.refresh();
+    } catch (error) { setError(error instanceof Error ? error.message : 'Login failed'); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -40,6 +47,7 @@ export default function LoginPage() {
         <h2 className="text-3xl font-extrabold mb-2 text-center text-gray-800 tracking-tight">Welcome Back</h2>
         <p className="text-center text-gray-500 mb-8 text-sm">Sign in to your POS Admin account</p>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
             <input
@@ -89,6 +97,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
+            disabled={busy}
             className="w-full bg-gradient-to-r from-indigo-600 to-blue-500 hover:from-indigo-700 hover:to-blue-600 focus:ring-2 focus:ring-indigo-400 focus:outline-none text-white py-2.5 rounded-lg text-base font-semibold shadow-md transition-all duration-150"
           >
             Login

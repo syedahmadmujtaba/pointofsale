@@ -87,7 +87,7 @@ async function getProfitLossReport(client: any, startDate: string | null, endDat
   
   // Get revenue (Sales Revenue account)
   const revenueQuery = `
-    SELECT COALESCE(SUM(credit_amount), 0) as total_revenue
+    SELECT COALESCE(SUM(credit_amount-debit_amount), 0) as total_revenue
     FROM general_ledger gl
     JOIN chart_of_accounts coa ON gl.account_id = coa.account_id
     WHERE coa.account_type = 'REVENUE'
@@ -96,20 +96,20 @@ async function getProfitLossReport(client: any, startDate: string | null, endDat
   
   // Get COGS (Cost of Goods Sold)
   const cogsQuery = `
-    SELECT COALESCE(SUM(debit_amount), 0) as total_cogs
+    SELECT COALESCE(SUM(debit_amount-credit_amount), 0) as total_cogs
     FROM general_ledger gl
     JOIN chart_of_accounts coa ON gl.account_id = coa.account_id
-    WHERE coa.account_name = 'Cost of Goods Sold'
+    WHERE coa.account_code = COALESCE((SELECT account_code FROM accounting_account_mappings WHERE role='cogs'),'5000')
     ${dateFilter}
   `;
   
   // Get operating expenses
   const expenseQuery = `
-    SELECT COALESCE(SUM(debit_amount), 0) as total_expenses
+    SELECT COALESCE(SUM(debit_amount-credit_amount), 0) as total_expenses
     FROM general_ledger gl
     JOIN chart_of_accounts coa ON gl.account_id = coa.account_id
     WHERE coa.account_type = 'EXPENSE' 
-    AND coa.account_name != 'Cost of Goods Sold'
+    AND coa.account_code != COALESCE((SELECT account_code FROM accounting_account_mappings WHERE role='cogs'),'5000')
     ${dateFilter}
   `;
   
@@ -175,10 +175,10 @@ async function getBalanceSheetReport(client: any) {
         totalAssets += balance;
         break;
       case 'LIABILITY':
-        totalLiabilities += balance;
+        totalLiabilities -= balance;
         break;
       case 'EQUITY':
-        totalEquity += balance;
+        totalEquity -= balance;
         break;
     }
   });
@@ -187,8 +187,8 @@ async function getBalanceSheetReport(client: any) {
   // For simplicity, we'll calculate current period net profit
   const profitQuery = `
     SELECT 
-      COALESCE(SUM(CASE WHEN coa.account_type = 'REVENUE' THEN gl.credit_amount ELSE 0 END), 0) -
-      COALESCE(SUM(CASE WHEN coa.account_type = 'EXPENSE' THEN gl.debit_amount ELSE 0 END), 0) as net_profit
+      COALESCE(SUM(CASE WHEN coa.account_type = 'REVENUE' THEN gl.credit_amount-gl.debit_amount ELSE 0 END), 0) -
+      COALESCE(SUM(CASE WHEN coa.account_type = 'EXPENSE' THEN gl.debit_amount-gl.credit_amount ELSE 0 END), 0) as net_profit
     FROM general_ledger gl
     JOIN chart_of_accounts coa ON gl.account_id = coa.account_id
     WHERE coa.account_type IN ('REVENUE', 'EXPENSE')
@@ -250,9 +250,9 @@ async function getCustomerReport(client: any, customerId: string, startDate: str
       s.sale_date,
       s.total_amount,
       s.amount_paid,
-      (s.total_amount - s.amount_paid) as balance_due
+      (s.total_amount - s.credited_amount - s.amount_paid) as balance_due
     FROM sales s
-    WHERE s.customer_id = $1 ${dateFilter}
+    WHERE s.voided_at IS NULL AND s.customer_id = $1 ${dateFilter}
     ORDER BY s.sale_date DESC
   `;
   
@@ -262,9 +262,9 @@ async function getCustomerReport(client: any, customerId: string, startDate: str
       COUNT(s.id) as total_transactions,
       COALESCE(SUM(s.total_amount), 0) as total_purchases,
       COALESCE(SUM(s.amount_paid), 0) as total_paid,
-      COALESCE(SUM(s.total_amount - s.amount_paid), 0) as total_balance
+      COALESCE(SUM(s.total_amount - s.credited_amount - s.amount_paid), 0) as total_balance
     FROM sales s
-    WHERE s.customer_id = $1 ${dateFilter}
+    WHERE s.voided_at IS NULL AND s.customer_id = $1 ${dateFilter}
   `;
   
   const customerResult = await client.query(customerQuery, [customerId]);
@@ -325,9 +325,9 @@ async function getVendorReport(client: any, vendorId: string, startDate: string 
       p.purchase_date,
       p.total_amount,
       p.amount_paid,
-      (p.total_amount - p.amount_paid) as balance_due
+      (p.total_amount - p.credited_amount - p.amount_paid) as balance_due
     FROM purchases p
-    WHERE p.vendor_id = $1 ${dateFilter}
+    WHERE p.voided_at IS NULL AND p.vendor_id = $1 ${dateFilter}
     ORDER BY p.purchase_date DESC
   `;
   
@@ -337,9 +337,9 @@ async function getVendorReport(client: any, vendorId: string, startDate: string 
       COUNT(p.id) as total_transactions,
       COALESCE(SUM(p.total_amount), 0) as total_purchases,
       COALESCE(SUM(p.amount_paid), 0) as total_paid,
-      COALESCE(SUM(p.total_amount - p.amount_paid), 0) as total_balance
+      COALESCE(SUM(p.total_amount - p.credited_amount - p.amount_paid), 0) as total_balance
     FROM purchases p
-    WHERE p.vendor_id = $1 ${dateFilter}
+    WHERE p.voided_at IS NULL AND p.vendor_id = $1 ${dateFilter}
   `;
   
   const vendorResult = await client.query(vendorQuery, [vendorId]);
@@ -368,77 +368,19 @@ async function getVendorReport(client: any, vendorId: string, startDate: string 
 
 // Sales Report
 async function getSalesReport(client: any, startDate: string | null, endDate: string | null) {
-  const formattedStartDate = formatDate(startDate);
-  const formattedEndDate = formatDate(endDate);
-
-  // Build date filters for sales
-  let salesDateFilter = '';
-  const salesParams: any[] = [];
-
-  if (formattedStartDate && formattedEndDate) {
-    salesDateFilter = 'WHERE DATE(s.sale_date) BETWEEN $1 AND $2';
-    salesParams.push(formattedStartDate, formattedEndDate);
-  } else if (formattedStartDate) {
-    salesDateFilter = 'WHERE DATE(s.sale_date) >= $1';
-    salesParams.push(formattedStartDate);
-  } else if (formattedEndDate) {
-    salesDateFilter = 'WHERE DATE(s.sale_date) <= $1';
-    salesParams.push(formattedEndDate);
-  }
-
-  // Total Sales
-  const totalSalesQuery = `
-    SELECT COALESCE(SUM(s.total_amount), 0) AS total_sale
-    FROM sales s
-    ${salesDateFilter}
-  `;
-
-  // Cost of Goods Sold
-  const COGSQuery = `
-    SELECT COALESCE(SUM(g.debit_amount), 0) AS total_cogs
-    FROM general_ledger g
-    JOIN sales s ON g.reference_id = s.id
-    WHERE g.account_id = 10
-    ${salesDateFilter ? salesDateFilter.replace('WHERE', 'AND') : ''}
-  `;
-
-  // Transactions list
-  const transactionsQuery = `
-    SELECT * FROM (
-      SELECT 
-        'sale' AS type, 
-        s.invoice_number AS invoice, 
-        s.total_amount AS price, 
-        s.sale_date AS date, 
-        g.debit_amount AS cogs
-      FROM sales s 
-      JOIN general_ledger g ON s.id = g.reference_id
-      WHERE g.account_id = 10
-      ${salesDateFilter ? salesDateFilter.replace('WHERE', 'AND') : ''}
-    ) t
-    ORDER BY date DESC
-  `;
-
-  const [salesTotalRes, COGSRes, transactionsRes] = await Promise.all([
-    client.query(totalSalesQuery, salesParams),
-    client.query(COGSQuery, salesParams),
-    (async () => {
-      if (salesParams.length > 0) {
-        return client.query(transactionsQuery, salesParams);
-      }
-      return client.query(transactionsQuery);
-    })()
-  ]);
-
-  const total_sale = parseFloat(salesTotalRes.rows[0].total_sale);
-  const total_cogs = parseFloat(COGSRes.rows[0].total_cogs);
-  const gross_profit = total_sale - total_cogs;
-
-  return NextResponse.json({
-    success: true,
-    reportType: 'sales',
-    summary: { total_sale, total_cogs, gross_profit },
-    transactions: transactionsRes.rows,
-    dateRange: { startDate: formattedStartDate, endDate: formattedEndDate }
-  });
+ const from=formatDate(startDate),to=formatDate(endDate);
+ // Report posted revenue and COGS, including reversals and returns, by posting date.
+ const result=await client.query(`
+  SELECT j.journal_id,j.reference_type AS type,j.description AS invoice,g.transaction_date AS date,
+   COALESCE(sum(CASE WHEN a.account_type='REVENUE' THEN g.credit_amount-g.debit_amount ELSE 0 END),0) AS price,
+   COALESCE(sum(CASE WHEN a.account_code=COALESCE((SELECT account_code FROM accounting_account_mappings WHERE role='cogs'),'5000') THEN g.debit_amount-g.credit_amount ELSE 0 END),0) AS cogs
+  FROM general_ledger g JOIN journal_entries j ON j.journal_id=g.journal_entry_id
+  JOIN chart_of_accounts a USING(account_id)
+  WHERE (a.account_type='REVENUE' OR a.account_code=COALESCE((SELECT account_code FROM accounting_account_mappings WHERE role='cogs'),'5000'))
+   AND ($1::date IS NULL OR g.transaction_date >=$1) AND ($2::date IS NULL OR g.transaction_date <=$2)
+  GROUP BY j.journal_id,j.reference_type,j.description,g.transaction_date ORDER BY g.transaction_date DESC,j.journal_id DESC
+ `,[from,to]);
+ const total_sale=result.rows.reduce((s:number,r:any)=>s+Number(r.price),0);
+ const total_cogs=result.rows.reduce((s:number,r:any)=>s+Number(r.cogs),0);
+ return NextResponse.json({success:true,reportType:'sales',summary:{total_sale,total_cogs,gross_profit:total_sale-total_cogs},transactions:result.rows,dateRange:{startDate:from,endDate:to}});
 }

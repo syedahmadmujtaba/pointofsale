@@ -26,6 +26,10 @@ type Customer = {
 };
 
 const NewSale = () => {
+  const [amountPaid, setAmountPaid] = useState('0');
+  const [dueDate, setDueDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [taxRate, setTaxRate] = useState(0);
   const [saleType, setSaleType] = useState<"Cash" | "Credit">("Cash");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   useEffect(() => {
@@ -146,7 +150,7 @@ const NewSale = () => {
       : orderDiscount;
   };
 
-  const tax = subtotal * 0.00; // 0% tax
+  const tax = Math.round((subtotal - calcOrderDiscount()) * taxRate) / 100;
   const grandTotal = subtotal - calcOrderDiscount() + tax;
 
   const handleSale = async () => {
@@ -171,10 +175,14 @@ const NewSale = () => {
       const payload = {
         invoice_number: invoiceNumber,
         customer_id: customer.id,
-        discount: calcOrderDiscount(),
+        discount: Number(calcOrderDiscount().toFixed(2)),
         subtotal: subtotal,
         tax_amount: tax,
-        total_amount: grandTotal,
+        total_amount: Number(grandTotal.toFixed(2)),
+        amount_paid: saleType === 'Cash' ? Number(grandTotal.toFixed(2)) : Number(amountPaid),
+        payment_terms: saleType.toLowerCase(),
+        payment_method: paymentMethod,
+        due_date: dueDate || date,
         sale_date: date,
         items: formattedItems,
       };
@@ -446,6 +454,12 @@ const NewSale = () => {
             {/* Order Summary Card */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">Order Summary</h2>
+              <div className="space-y-3 mb-4">
+                <label className="block">Payment terms<select value={saleType} onChange={e=>setSaleType(e.target.value as 'Cash'|'Credit')} className="w-full border p-2"><option>Cash</option><option>Credit</option></select></label>
+                {saleType==='Credit' && <><label className="block">Amount paid now<input type="number" min="0" step="0.01" value={amountPaid} onChange={e=>setAmountPaid(e.target.value)} className="w-full border p-2"/></label><label className="block">Due date<input type="date" min={date} value={dueDate} onChange={e=>setDueDate(e.target.value)} className="w-full border p-2"/></label></>}
+                <label className="block">Payment account<select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)} className="w-full border p-2"><option value="cash">Cash</option><option value="bank">Bank</option></select></label>
+                <label className="block">Tax rate (%)<input type="number" min="0" max="100" step="0.01" value={taxRate} onChange={e=>setTaxRate(Number(e.target.value))} className="w-full border p-2"/></label>
+              </div>
               
               {/* Order Discount */}
               <div className="mb-4">

@@ -67,6 +67,7 @@ const NAV_CONFIG: NavItem[] = [
   },
   { name: 'Expenses', path: '/expenses', icon: Receipt },
   { name: 'Reports', path: '/report', icon: FileText },
+  { name: 'Accounting', path: '/accounting', icon: Calculator },
   // { name: 'Accounts', path: '/account', icon: Calculator },
 ];
 
@@ -123,7 +124,7 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center space-x-2">
           <button className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded flex items-center space-x-2"
-            onClick={() => router.push('/login')}>
+            onClick={async () => { await fetch('/api/auth/logout', {method:'POST'}); router.push('/login'); router.refresh(); }}>
             <LogOut />
             <span>Logout</span>
           </button>

@@ -1,54 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cloud POS and accounting
 
-## Database migrations (Neon)
+Single-business installation with its own PostgreSQL/Neon database. No Docker or standalone build is required.
 
-Set the Neon connection string as `DATABASE_URL` in `.env.local`, `.env`, or the
-deployment platform's environment variables, then run:
+## Setup and deployment
+
+Use Node.js 22.15 or newer. Install dependencies with npm ci.
+Configure DATABASE_URL and SESSION_SECRET (a securely generated secret of at least 32 characters) in the hosting environment. DATABASE_URL_UNPOOLED is optional and preferred for migrations. Never commit credentials.
+
+Run these commands against a disposable/staging database first:
 
 ```bash
+npm run migrate -- --status
 npm run migrate
+npm run user:create
+npm run build
+npm start
 ```
 
-Migrations in `migrations/` run once in filename order and are recorded in the
-`schema_migrations` table. An existing database that already contains the
-`products` table is automatically marked as having the baseline migration, so
-the baseline schema is not reapplied over existing data.
+Before user:create, supply POS_USERNAME, POS_PASSWORD (at least 12 characters), and optionally POS_ROLE through your secure environment. Roles are admin, accountant, clerk, and viewer. Create a second administrator for maker/checker journal approvals. No default login or password is seeded.
 
-Run migrations as a deployment step before starting the application. Do not run
-multiple migration commands concurrently; the runner also uses a PostgreSQL
-advisory lock as an additional safeguard.
+Migrations do NOT run automatically during build or application startup. Add npm run migrate as an explicit release/deployment step before exposing the new application. Back up or branch Neon before migration. The runner applies pending migrations in one transaction, serializes migration runs, records checksums, and validates expected baseline tables/columns before adopting an existing database. --status is read-only. Schema validation is not an accounting reconciliation.
 
-## Getting Started
+## Implemented workflows
 
-First, run the development server:
+- Balanced double-entry journals with matching ledger entries, account-code mappings, immutable posted entries, reversal history and closed-period checks.
+- Separate invoice recognition and settlement; credit sales/purchases, partial receipts, supplier payments, advances, allocations, due dates and customer credit limits.
+- Discount/tax allocation, cumulative returns, original sale cost restoration, weighted-average stock valuation, service items, adjustments and warehouse transfers.
+- Trial balance, account ledgers, current outstanding/aging, net profit and balance-sheet reports, reconciliation diagnostics and audit history.
+- Configurable account creation/mappings and business settings; reviewed manual journals, opening customer/vendor balances and bank reconciliation.
+- Signed session authentication, same-origin write checks and role restrictions.
+
+The Accounting screen contains these operational forms. Sales and purchase entry include cash/credit options. Product entry offers stock or service items.
+
+## Verification
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run test:accounting
+npx tsc --noEmit
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The accounting suite uses an isolated PostgreSQL-compatible PGlite database, not Neon. It exercises migrations/rollback/checksums, journals, credit/payment lifecycles, rounding, returns, warehouse guards, approvals, reconciliation, authentication and permissions. A Neon staging smoke test and browser workflow acceptance are still required before production.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Current boundaries and rollout gates
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Historical postings are preserved, not repaired. Legacy invoices are blocked from new editing/payment/return workflows until reconciled. Review the reconciliation report and approve correcting journals; do not assume balanced historical journals are correctly classified.
+- Money currently uses two decimal places and one currency per installation. Legacy POS screens still contain PKR labels; full propagation of currency, default tax, business branding and numbering to all existing screens remains unfinished. Do not deploy a non-PKR installation yet.
+- Aging/statements use current settlement state, not historical as-of reconstruction. The ledger supports historical dates. Advances are shown separately.
+- Invoices operate from Main warehouse. Transfer other-location stock to Main before sale; valuation remains pooled across warehouses.
+- Posted stock purchases are corrected with returns, not edits. Reverse associated payments/returns before editing sales. Editing an unpaid sale does not automatically collect money.
+- Account mapping changes after transactions require accounting review; historical postings are not automatically reclassified. Do not change COGS mappings on a live ledger without a reviewed reporting/reclassification plan.
+- Sessions expire after one hour. User/role changes do not revoke existing signed sessions immediately. User administration currently uses the command-line creation script.
+- Country-specific tax compliance, multi-currency, fractional stock quantities, payroll, manufacturing and comprehensive fixed-asset accounting are not implemented.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See IMPLEMENTATION_PLAN.md for remaining work. This code is not a claim of suitability for every industry or statutory reporting requirement.

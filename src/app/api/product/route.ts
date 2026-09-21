@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       sale_price = 0;
     }
 
-    const res = await pool.query("INSERT INTO products (name, sku, description, cost_price, sale_price, brand_id, category_id, min_stock_level) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *", [body.name.trim(), sku, body.description, body.cost_price, body.sale_price, body.brand_id, body.category_id, body.min_stock_level]);
+    const res = await pool.query("INSERT INTO products (name, sku, description, cost_price, sale_price, brand_id, category_id, min_stock_level, item_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *", [body.name.trim(), sku, body.description, body.cost_price, body.sale_price, body.brand_id, body.category_id, body.min_stock_level, body.item_type || "stock"]);
 
     return NextResponse.json({ message: "Product added successfully", product: res.rows[0] });
   } catch (error) {

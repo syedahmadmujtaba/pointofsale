@@ -16,6 +16,7 @@ const Products = () => {
   const [sortKey, setSortKey] = useState<'sku' | 'name' | 'brand' | 'category' | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [newProduct, setNewProduct] = useState({
+    item_type: 'stock',
     name: '',
     sku: '',
     description: '',
@@ -49,6 +50,7 @@ const Products = () => {
   const handleEditClick = (product: Product) => {
     // Populate the form fields with the selected product's data
     setNewProduct({
+      item_type: product.item_type || 'stock',
       name: product.name,
       sku: product.sku || '',
       description: product.description || '', // Ensure description is handled
@@ -81,6 +83,7 @@ const Products = () => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            item_type: newProduct.item_type,
             name: newProduct.name,
             sku: newProduct.sku,
             // description is omitted for edit
@@ -102,6 +105,7 @@ const Products = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            item_type: newProduct.item_type,
             name: newProduct.name,
             sku: newProduct.sku,
             description: newProduct.description, // Include description for add
@@ -145,6 +149,7 @@ const Products = () => {
     setEditingProductId(null);
     // Reset form data to initial empty state
     setNewProduct({
+      item_type: 'stock',
       name: '',
       sku: '',
       description: '',
@@ -282,6 +287,11 @@ const Products = () => {
               {isEditMode ? 'Edit Product' : 'Add New Product'}
             </h2>
             <form onSubmit={handleAddProduct} className="space-y-4">
+              <label htmlFor="item_type">Item type</label>
+              <select id="item_type" className="w-full border rounded p-2" value={newProduct.item_type} onChange={e=>setNewProduct({...newProduct,item_type:e.target.value})}>
+                <option value="stock">Stock item</option>
+                <option value="service">Service (no inventory)</option>
+              </select>
               {/* Brand Select */}
               <label htmlFor="brand_id">Brand</label>
               <Select
