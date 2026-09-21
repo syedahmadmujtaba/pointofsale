@@ -1,5 +1,7 @@
 # Cloud POS and accounting
 
+Complete project documentation is indexed in [docs/README.md](./docs/README.md).
+
 Single-business installation with its own PostgreSQL/Neon database. No Docker or standalone build is required.
 
 ## Setup and deployment
