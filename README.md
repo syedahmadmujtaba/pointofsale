@@ -1,5 +1,23 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database migrations (Neon)
+
+Set the Neon connection string as `DATABASE_URL` in `.env.local`, `.env`, or the
+deployment platform's environment variables, then run:
+
+```bash
+npm run migrate
+```
+
+Migrations in `migrations/` run once in filename order and are recorded in the
+`schema_migrations` table. An existing database that already contains the
+`products` table is automatically marked as having the baseline migration, so
+the baseline schema is not reapplied over existing data.
+
+Run migrations as a deployment step before starting the application. Do not run
+multiple migration commands concurrently; the runner also uses a PostgreSQL
+advisory lock as an additional safeguard.
+
 ## Getting Started
 
 First, run the development server:
